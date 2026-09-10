@@ -194,14 +194,14 @@ export default function EditorHome() {
                   ))}
                 </div>
               )}
-
-              <p className="page-footnote">
-                Setiap checklist punya tautan sendiri (contoh:{" "}
-                <code>/d/nama-tautan</code>). Bagikan tautan itu — siapa pun
-                yang membukanya bisa mencentang isinya. Menyusun dan mengubah
-                isi hanya dilakukan dari halaman ini.
-              </p>
             </Sheet>
+
+            <p className="page-footnote">
+              Setiap checklist punya tautan sendiri (contoh:{" "}
+              <code>/d/nama-tautan</code>). Bagikan tautan itu — siapa pun
+              yang membukanya bisa mencentang isinya. Menyusun dan mengubah
+              isi hanya dilakukan dari halaman ini.
+            </p>
           </div>
         ) : (
           <div className="view-narrow">

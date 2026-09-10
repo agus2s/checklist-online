@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import type { Block, ParsedDoc } from "../lib/markdown";
 import { getProgress, resolveSlots } from "../lib/markdown";
 import type { ItemState, SlotValue } from "../lib/types";
@@ -47,6 +48,13 @@ function getSectionStats(
   return stats;
 }
 
+function isDone(slots: SlotValue[]): boolean {
+  const enabled = slots.filter((s) => s !== 2);
+  return enabled.length > 0 && enabled.every((s) => s === 1);
+}
+
+type FilterTab = "all" | "done" | "todo";
+
 export default function ChecklistViewer({
   template,
   fillState,
@@ -58,6 +66,48 @@ export default function ChecklistViewer({
   const { blocks } = template;
   const { items, doneSlots, totalSlots, pct } = getProgress(blocks, fillState);
   const sectionStats = getSectionStats(blocks, fillState);
+  const [filter, setFilter] = useState<FilterTab>("all");
+
+  const counts = { all: 0, done: 0, todo: 0 };
+  blocks.forEach((b) => {
+    if (b.type === "item") {
+      const slots = resolveSlots(b, fillState[b.id]);
+      counts.all++;
+      if (isDone(slots)) counts.done++;
+      else counts.todo++;
+    } else if (b.type === "table") {
+      for (const row of b.rows) {
+        const slots = resolveSlots(row, fillState[row.id]);
+        counts.all++;
+        if (isDone(slots)) counts.done++;
+        else counts.todo++;
+      }
+    }
+  });
+
+  const visible = (slots: SlotValue[]) => {
+    if (filter === "all") return true;
+    return filter === "done" ? isDone(slots) : !isDone(slots);
+  };
+
+  const visibleSections = new Set<number>();
+  let currentSection: number | null = null;
+  blocks.forEach((b, i) => {
+    if (b.type === "section") {
+      currentSection = i;
+    } else if (b.type === "item") {
+      if (visible(resolveSlots(b, fillState[b.id])) && currentSection !== null)
+        visibleSections.add(currentSection);
+    } else if (b.type === "table") {
+      const hasVisible = b.rows.some((row) =>
+        visible(resolveSlots(row, fillState[row.id]))
+      );
+      if (hasVisible && currentSection !== null) visibleSections.add(currentSection);
+    }
+  });
+
+  const visibleBlocksCount =
+    filter === "all" ? counts.all : filter === "done" ? counts.done : counts.todo;
 
   return (
     <>
@@ -77,15 +127,35 @@ export default function ChecklistViewer({
             <div className="summary-count">
               <b>{doneSlots}</b> dari {totalSlots} kotak selesai
             </div>
+            {counts.all > 0 && (
+              <div className="filter-tabs">
+                {(
+                  [
+                    ["all", "Semua", counts.all],
+                    ["done", "Sudah", counts.done],
+                    ["todo", "Belum", counts.todo],
+                  ] as [FilterTab, string, number][]
+                ).map(([value, label, count]) => (
+                  <button
+                    key={value}
+                    className={`filter-tab${filter === value ? " active" : ""}`}
+                    onClick={() => setFilter(value)}
+                  >
+                    {label} <span>{count}</span>
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       )}
-
       <div>
         {blocks.map((b, idx) => {
           if (b.type === "section") {
             const stats = sectionStats[idx];
-            if (!stats || stats.total === 0) return null;
+            if (filter !== "all") {
+              if (!visibleSections.has(idx)) return null;
+            } else if (!stats || stats.total === 0) return null;
             return (
               <div key={idx} className="section-head">
                 <span>{b.text}</span>
@@ -110,7 +180,10 @@ export default function ChecklistViewer({
             );
           if (b.type === "space") return <div key={idx} className="block-space" />;
           if (b.type === "table") {
-            if (b.rows.length === 0) return null;
+            const visibleRows = b.rows.filter((row) =>
+              visible(resolveSlots(row, fillState[row.id]))
+            );
+            if (visibleRows.length === 0) return null;
             return (
               <div key={idx} className="check-table-wrap">
                 <table className="check-table">
@@ -122,9 +195,9 @@ export default function ChecklistViewer({
                     </tr>
                   </thead>
                   <tbody>
-                    {b.rows.map((row) => {
+                    {visibleRows.map((row) => {
                       const slots = resolveSlots(row, fillState[row.id]);
-                      const allDone = slots.length > 0 && slots.every((s) => s === 1);
+                      const allDone = isDone(slots);
                       return (
                         <tr key={row.id} className={allDone ? "checked" : undefined}>
                           <td className="table-num">{row.num}</td>
@@ -166,7 +239,8 @@ export default function ChecklistViewer({
           }
           if (b.type === "item") {
             const slots = resolveSlots(b, fillState[b.id]);
-            const allDone = slots.length > 0 && slots.every((s) => s === 1);
+            if (!visible(slots)) return null;
+            const allDone = isDone(slots);
             return (
               <div
                 key={b.id}
@@ -208,6 +282,12 @@ export default function ChecklistViewer({
           return null;
         })}
       </div>
+
+      {counts.all > 0 && visibleBlocksCount === 0 && (
+        <div className="docs-empty">
+          Tidak ada item di kategori ini.
+        </div>
+      )}
 
       <div className="action-row">
         <button className="sheet-btn primary" onClick={onShare}>

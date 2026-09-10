@@ -29,12 +29,125 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+/* ---------- site header ---------- */
+
+.site-header {
+  position: relative;
+  width: 100%;
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 28px 16px 6px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 11px;
+}
+
+.site-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  color: #FCF6E7;
+  font-size: 19px;
+  font-weight: 800;
+  letter-spacing: 0.3px;
+  text-decoration: none;
+}
+
+.site-brand:hover {
+  color: #FFFFFF;
+}
+
+.brand-mark {
+  width: 20px;
+  height: 20px;
+  border-radius: 5px;
+  background: #FCF6E7;
+  color: #3D7A5B;
+  display: inline-grid;
+  place-items: center;
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.about-trigger {
+  position: absolute;
+  top: 24px;
+  right: 16px;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 1.5px solid rgba(252, 246, 231, 0.5);
+  background: transparent;
+  color: #FCF6E7;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  padding: 0;
+}
+
+.about-trigger svg {
+  width: 15px;
+  height: 15px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.about-trigger:hover {
+  background: rgba(255, 255, 255, 0.15);
+  border-color: #ffffff;
+  color: #ffffff;
+}
+
+.about-brand {
+  font-size: 20px;
+  font-weight: 800;
+  color: var(--ink);
+  margin-bottom: 8px;
+}
+
+.about-copy {
+  font-size: 12.5px;
+  color: #8A8375;
+  margin: 12px 0 0;
+}
+
+.about-sub {
+  font-weight: 700;
+  font-size: 13px;
+  color: var(--ink);
+  margin: 14px 0 6px;
+}
+
+.about-credits {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.about-credits li + li {
+  margin-top: 6px;
+}
+
+.about-credits a {
+  color: var(--sage);
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.about-credits a:hover {
+  text-decoration: underline;
+}
+
 /* ---------- page frame ---------- */
 
 .page-outer {
   min-height: 100%;
   background: var(--outer);
-  padding: 32px 16px;
+  padding: 20px 16px;
   display: flex;
   justify-content: center;
   font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
@@ -72,10 +185,12 @@ body {
 }
 
 .page-footnote {
+  max-width: 480px;
+  margin: 18px auto 0;
   text-align: center;
-  color: #D6E3D2;
-  font-size: 11.5px;
-  margin-top: 16px;
+  color: #E8F0E2;
+  font-size: 12px;
+  line-height: 1.65;
 }
 
 /* ---------- paper sheet ---------- */
@@ -177,6 +292,49 @@ body {
 .summary-count b {
   color: var(--ink);
   font-size: 15px;
+}
+
+.filter-tabs {
+  display: flex;
+  gap: 8px;
+  margin: 10px 0 0;
+}
+
+.filter-tab {
+  flex: 1;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  font-size: 13px;
+  font-weight: 700;
+  border: 1.5px solid var(--line);
+  background: #FCF6E7;
+  color: var(--ink);
+  padding: 7px 10px;
+  border-radius: 999px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.filter-tab:hover {
+  border-color: var(--sage);
+}
+
+.filter-tab span {
+  font-weight: 400;
+  font-size: 12px;
+  color: #5B6A72;
+}
+
+.filter-tab.active {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: var(--paper);
+}
+
+.filter-tab.active span {
+  color: #EFEAE0;
 }
 
 .progress-ring {
@@ -916,7 +1074,8 @@ textarea.editor {
 
 .page-footnote code {
   font-size: 12px;
-  background: #F8F1DE;
-  padding: 1px 5px;
+  background: rgba(255, 255, 255, 0.18);
+  color: #fff;
+  padding: 2px 6px;
   border-radius: 4px;
 }
