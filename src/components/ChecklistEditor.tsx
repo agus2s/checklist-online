@@ -5,9 +5,12 @@ import { marked } from "marked";
 import { cycleTaskSlot, expandTaskBoxesForPreview } from "../lib/markdown";
 
 interface ChecklistEditorProps {
+  title?: string;
   draft: string;
   onDraftChange: (value: string) => void;
   canCancel: boolean;
+  slug?: string;
+  onSlugChange?: (value: string) => void;
   onPublish: () => void;
   onCancel: () => void;
 }
@@ -19,9 +22,12 @@ function renderPreview(draft: string): string {
 }
 
 export default function ChecklistEditor({
+  title = "Susun checklist",
   draft,
   onDraftChange,
   canCancel,
+  slug,
+  onSlugChange,
   onPublish,
   onCancel,
 }: ChecklistEditorProps) {
@@ -45,7 +51,7 @@ export default function ChecklistEditor({
   return (
     <>
       <div className="editor-head">
-        <h1 className="editor-title">Susun checklist</h1>
+        <h1 className="editor-title">{title}</h1>
         <button
           className="sheet-btn help-btn"
           onClick={() => setShowHelp(true)}
@@ -53,6 +59,26 @@ export default function ChecklistEditor({
           Bantuan
         </button>
       </div>
+      {slug !== undefined && onSlugChange && (
+        <div className="slug-field">
+          <label className="slug-label" htmlFor="slug-input">
+            Slug / tautan
+          </label>
+          <input
+            id="slug-input"
+            className="slug-input"
+            value={slug}
+            onChange={(e) => onSlugChange(e.target.value)}
+            placeholder="contoh: setor-soal-asts-1"
+            spellCheck={false}
+          />
+          <span className="slug-url">
+            {slug.trim()
+              ? `/d/${slug.trim().toLowerCase()}`
+              : "/d/<slug> belum diisi"}
+          </span>
+        </div>
+      )}
       <div className="editor-split">
         <div className="editor-panel">
           <div className="panel-label">Markdown</div>

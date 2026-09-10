@@ -1,14 +1,23 @@
-import type { ItemState, SlotValue, StoreData } from "../../../lib/types";
-import { readStore, writeStore } from "../../../lib/db";
+import type { ItemState, SlotValue, StoreData } from "../../../../lib/types";
+import { deleteDoc, readDoc, writeDoc } from "../../../../lib/db";
 
 export const dynamic = "force-dynamic";
+
+const SLUG_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+
+function cleanSlug(value: string): string | null {
+  const slug = value.trim().toLowerCase();
+  return SLUG_RE.test(slug) ? slug : null;
+}
 
 function sanitizeSlots(raw: unknown): SlotValue[] {
   if (!Array.isArray(raw)) return [];
   return raw.map((v) => (v === 1 ? 1 : v === 2 ? 2 : 0));
 }
 
-function sanitizeState(state: Record<string, unknown> | undefined): Record<string, ItemState> {
+function sanitizeState(
+  state: Record<string, unknown> | undefined
+): Record<string, ItemState> {
   const clean: Record<string, ItemState> = {};
   if (!state) return clean;
   for (const [id, raw] of Object.entries(state)) {
@@ -27,11 +36,23 @@ function sanitizeState(state: Record<string, unknown> | undefined): Record<strin
   return clean;
 }
 
-export async function GET() {
-  return Response.json(await readStore());
+type SlugCtx = { params: Promise<{ slug: string }> };
+
+export async function GET(_request: Request, ctx: SlugCtx) {
+  const slug = cleanSlug((await ctx.params).slug);
+  if (!slug)
+    return Response.json({ error: "Slug tidak valid" }, { status: 400 });
+  const data = await readDoc(slug);
+  if (!data)
+    return Response.json({ error: "Checklist tidak ditemukan" }, { status: 404 });
+  return Response.json(data);
 }
 
-export async function POST(request: Request) {
+export async function POST(request: Request, ctx: SlugCtx) {
+  const slug = cleanSlug((await ctx.params).slug);
+  if (!slug)
+    return Response.json({ error: "Slug tidak valid" }, { status: 400 });
+
   let body: unknown;
   try {
     body = await request.json();
@@ -47,7 +68,7 @@ export async function POST(request: Request) {
     state?: Record<string, unknown>;
   };
 
-  const data = await readStore();
+  const data = (await readDoc(slug)) ?? { template: null, state: {} };
   const next: StoreData = {
     template:
       "template" in partial
@@ -63,6 +84,14 @@ export async function POST(request: Request) {
         : data.template,
     state: "state" in partial ? sanitizeState(partial.state) : data.state,
   };
-  await writeStore(next);
+  await writeDoc(slug, next);
   return Response.json(next);
+}
+
+export async function DELETE(_request: Request, ctx: SlugCtx) {
+  const slug = cleanSlug((await ctx.params).slug);
+  if (!slug)
+    return Response.json({ error: "Slug tidak valid" }, { status: 400 });
+  await deleteDoc(slug);
+  return Response.json({ ok: true });
 }

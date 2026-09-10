@@ -1,15 +1,17 @@
 import { DatabaseSync } from "node:sqlite";
 import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import path from "node:path";
-import type { StoreData } from "./types";
+import type { DocMeta, StoreData } from "./types";
+import { extractTitle } from "./markdown";
 
-const STORE_KEY = "store";
+const LEGACY_KEY = "store";
+const INDEX_KEY = "docs:index";
 
 const DATA_DIR = path.join(process.cwd(), "data");
 const DB_FILE = path.join(DATA_DIR, "checklist.db");
 const LEGACY_FILE = path.join(DATA_DIR, "checklist.json");
 
-/* ---------- remote (Vercel KV / Upstash Redis) ---------- */
+/* ---------- remote (Upstash Redis) ---------- */
 
 function getEnv(...names: string[]): string | undefined {
   for (const name of names) {
@@ -45,26 +47,29 @@ function getKv(): Promise<import("@upstash/redis").Redis | null> {
   return kvPromise;
 }
 
-async function readRemote(): Promise<StoreData | null> {
+async function kvGetRemote(key: string): Promise<string | null> {
   try {
     const client = await getKv();
     if (!client) return null;
-    const raw = await client.get<Partial<StoreData>>(STORE_KEY);
-    if (!raw) return null;
-    return {
-      template: raw.template ?? null,
-      state: raw.state ?? {},
-    };
+    const value = await client.get<unknown>(key);
+    if (value === null || value === undefined) return null;
+    return typeof value === "string" ? value : JSON.stringify(value);
   } catch (err) {
-    console.error("Gagal membaca KV:", err);
+    console.error("Gagal membaca Redis:", err);
     return null;
   }
 }
 
-async function writeRemote(data: StoreData): Promise<void> {
+async function kvSetRemote(key: string, value: string): Promise<void> {
   const client = await getKv();
   if (!client) return;
-  await client.set(STORE_KEY, data);
+  await client.set(key, value);
+}
+
+async function kvDelRemote(key: string): Promise<void> {
+  const client = await getKv();
+  if (!client) return;
+  await client.del(key);
 }
 
 /* ---------- local (SQLite) fallback untuk dev tanpa env ---------- */
@@ -78,24 +83,8 @@ function warnLocal(fallback: string): void {
     localWarned = true;
     console.warn(
       `Penyimpanan file tidak tersedia (${fallback}); memakai memori. ` +
-        "Konfigurasi KV (KV_REST_API_URL) untuk persistensi."
+        "Konfigurasi UPSTASH_REDIS_REST_URL untuk persistensi."
     );
-  }
-}
-
-function migrateLegacy(dbConn: DatabaseSync): void {
-  const hasStore = dbConn.prepare("SELECT 1 FROM kv WHERE key = ?").get(STORE_KEY);
-  if (hasStore) return;
-  if (!existsSync(LEGACY_FILE)) return;
-  try {
-    const raw = readFileSync(LEGACY_FILE, "utf8");
-    const parsed = JSON.parse(raw) as StoreData;
-    dbConn
-      .prepare("INSERT INTO kv (key, value) VALUES (?, ?)")
-      .run(STORE_KEY, JSON.stringify(parsed));
-    console.log("Migrasi data lama checklist.json -> checklist.db selesai");
-  } catch (err) {
-    console.error("Gagal memigrasi checklist.json:", err);
   }
 }
 
@@ -106,76 +95,176 @@ function getDb(): DatabaseSync {
   db.exec(
     "CREATE TABLE IF NOT EXISTS kv (key TEXT PRIMARY KEY, value TEXT NOT NULL)"
   );
-  migrateLegacy(db);
+  if (existsSync(LEGACY_FILE)) {
+    try {
+      const parsed = JSON.parse(readFileSync(LEGACY_FILE, "utf8")) as StoreData;
+      const hasKey = db
+        .prepare("SELECT 1 FROM kv WHERE key = ?")
+        .get(LEGACY_KEY) as { "1"?: number } | undefined;
+      if (!hasKey) {
+        db.prepare("INSERT INTO kv (key, value) VALUES (?, ?)").run(
+          LEGACY_KEY,
+          JSON.stringify(parsed)
+        );
+        console.log("Migrasi data lama checklist.json -> checklist.db selesai");
+      }
+    } catch (err) {
+      console.error("Gagal memigrasi checklist.json:", err);
+    }
+  }
   return db;
 }
 
-function readLocal(): StoreData {
+function localGet(key: string): string | null {
   try {
     const row = getDb()
       .prepare("SELECT value FROM kv WHERE key = ?")
-      .get(STORE_KEY) as { value?: string } | undefined;
-    if (!row?.value) return { template: null, state: {} };
-    const parsed = JSON.parse(row.value) as Partial<StoreData>;
-    return {
-      template: parsed.template ?? null,
-      state: parsed.state ?? {},
-    };
+      .get(key) as { value?: string } | undefined;
+    return row?.value ?? null;
   } catch {
     warnLocal("read-only / EROFS");
-    const value = memoryStore.get(STORE_KEY);
-    if (!value) return { template: null, state: {} };
-    try {
-      const parsed = JSON.parse(value) as Partial<StoreData>;
-      return {
-        template: parsed.template ?? null,
-        state: parsed.state ?? {},
-      };
-    } catch {
-      return { template: null, state: {} };
-    }
+    return memoryStore.get(key) ?? null;
   }
 }
 
-function writeLocal(data: StoreData): void {
+function localSet(key: string, value: string): void {
   try {
     getDb()
       .prepare(
         "INSERT INTO kv (key, value) VALUES (?, ?) " +
           "ON CONFLICT(key) DO UPDATE SET value = excluded.value"
       )
-      .run(STORE_KEY, JSON.stringify(data));
+      .run(key, value);
   } catch {
     warnLocal("read-only / EROFS");
-    memoryStore.set(STORE_KEY, JSON.stringify(data));
+    memoryStore.set(key, value);
   }
 }
 
-/* ---------- public API ---------- */
-
-export async function readStore(): Promise<StoreData> {
-  if (remoteEnabled()) {
-    const remote = await readRemote();
-    if (remote) return remote;
-    const local = readLocal();
-    if (local.template || Object.keys(local.state).length > 0) {
-      try {
-        await writeRemote(local);
-        console.log("Migrasi data lokal -> KV selesai");
-      } catch (err) {
-        console.error("Gagal migrasi data lokal ke KV:", err);
-      }
-      return local;
-    }
-    return { template: null, state: {} };
+function localDel(key: string): void {
+  try {
+    getDb().prepare("DELETE FROM kv WHERE key = ?").run(key);
+  } catch {
+    warnLocal("read-only / EROFS");
+    memoryStore.delete(key);
   }
-  return readLocal();
 }
 
-export async function writeStore(data: StoreData): Promise<void> {
+/* ---------- penyimpanan seragam ---------- */
+
+async function kvGet(key: string): Promise<string | null> {
+  if (remoteEnabled()) return kvGetRemote(key);
+  return localGet(key);
+}
+
+async function kvSet(key: string, value: string): Promise<void> {
   if (remoteEnabled()) {
-    await writeRemote(data);
+    await kvSetRemote(key, value);
     return;
   }
-  writeLocal(data);
+  localSet(key, value);
+}
+
+async function kvDel(key: string): Promise<void> {
+  if (remoteEnabled()) {
+    await kvDelRemote(key);
+    return;
+  }
+  localDel(key);
+}
+
+const docKey = (slug: string) => `store:${slug}`;
+
+async function readIndex(): Promise<DocMeta[]> {
+  const raw = await kvGet(INDEX_KEY);
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw) as DocMeta[];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+async function writeIndex(list: DocMeta[]): Promise<void> {
+  await kvSet(INDEX_KEY, JSON.stringify(list));
+}
+
+async function migrateLegacyDoc(): Promise<void> {
+  const raw = await kvGet(LEGACY_KEY);
+  if (raw === null) return;
+  let info = "";
+  try {
+    const data = JSON.parse(raw) as StoreData;
+    if (!data.template && (!data.state || Object.keys(data.state).length === 0)) {
+      await kvDel(LEGACY_KEY);
+      return;
+    }
+    if (!(await kvGet(docKey("default")))) {
+      await kvSet(docKey("default"), JSON.stringify(data));
+      const list = await readIndex();
+      if (!list.some((d) => d.slug === "default")) {
+        list.push({
+          slug: "default",
+          title: data.template
+            ? extractTitle(data.template.markdown)
+            : "Checklist",
+          updatedAt: data.template?.updatedAt ?? Date.now(),
+        });
+        await writeIndex(list);
+      }
+    }
+    info = " (dimigrasi ke ``default``)";
+  } catch (err) {
+    console.error("Gagal migrasi data lama:", err);
+  }
+  await kvDel(LEGACY_KEY);
+  if (info) console.log(`Migrasi data lama selesai${info}`);
+}
+
+/* ---------- API publik ---------- */
+
+export async function listDocs(): Promise<DocMeta[]> {
+  await migrateLegacyDoc();
+  const list = await readIndex();
+  return [...list].sort((a, b) => b.updatedAt - a.updatedAt);
+}
+
+export async function readDoc(slug: string): Promise<StoreData | null> {
+  await migrateLegacyDoc();
+  const raw = await kvGet(docKey(slug));
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as Partial<StoreData>;
+    return {
+      template: parsed.template ?? null,
+      state: parsed.state ?? {},
+    };
+  } catch {
+    return null;
+  }
+}
+
+export async function writeDoc(slug: string, data: StoreData): Promise<void> {
+  await kvSet(docKey(slug), JSON.stringify(data));
+  const list = await readIndex();
+  const idx = list.findIndex((d) => d.slug === slug);
+  const meta: DocMeta = {
+    slug,
+    title: data.template
+      ? extractTitle(data.template.markdown)
+      : idx >= 0
+        ? list[idx].title
+        : "Checklist",
+    updatedAt: data.template?.updatedAt ?? Date.now(),
+  };
+  if (idx >= 0) list[idx] = meta;
+  else list.push(meta);
+  await writeIndex([...list].sort((a, b) => b.updatedAt - a.updatedAt));
+}
+
+export async function deleteDoc(slug: string): Promise<void> {
+  await kvDel(docKey(slug));
+  const list = await readIndex();
+  await writeIndex(list.filter((d) => d.slug !== slug));
 }

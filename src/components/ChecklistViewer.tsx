@@ -10,7 +10,7 @@ interface ChecklistViewerProps {
   template: ParsedDoc;
   fillState: Record<string, ItemState>;
   onCycleSlot: (id: string, slotIndex: number) => void;
-  onEdit: () => void;
+  onEdit?: () => void;
   onShare: () => void;
   onCopyLink: () => void;
   onRefresh: () => void;
@@ -67,9 +67,11 @@ export default function ChecklistViewer({
     <>
       <div className="viewer-head">
         <h1 className="viewer-title">{template.title}</h1>
-        <button className="sheet-btn" onClick={onEdit}>
-          Ubah
-        </button>
+        {onEdit && (
+          <button className="sheet-btn" onClick={onEdit}>
+            Ubah
+          </button>
+        )}
       </div>
 
       {items.length > 0 && (

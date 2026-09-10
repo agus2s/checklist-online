@@ -1,29 +1,40 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import Sheet from "../components/Sheet";
-import ChecklistViewer from "../components/ChecklistViewer";
 import ChecklistEditor from "../components/ChecklistEditor";
 import {
   DEFAULT_MARKDOWN,
-  findSlotUnit,
-  getProgress,
-  parseMarkdown,
-  resolveSlots,
-  type ParsedDoc,
+  extractTitle,
 } from "../lib/markdown";
-import { fetchStore, saveStore } from "../lib/store-client";
-import { buildChecklistImage } from "../lib/snapshot";
-import type { ItemState, StoreData } from "../lib/types";
+import {
+  deleteDoc,
+  fetchDoc,
+  fetchDocs,
+  saveDoc,
+} from "../lib/doc-client";
+import type { DocMeta } from "../lib/types";
 
-type Mode = "view" | "edit";
+const SLUG_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
-export default function PublicChecklist() {
+function slugify(value: string): string {
+  return value
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+export default function EditorHome() {
+  const [docs, setDocs] = useState<DocMeta[]>([]);
   const [loading, setLoading] = useState(true);
-  const [template, setTemplate] = useState<ParsedDoc | null>(null);
-  const [fillState, setFillState] = useState<Record<string, ItemState>>({});
-  const [mode, setMode] = useState<Mode>("view");
+  const [view, setView] = useState<"docs" | "edit">("docs");
   const [draft, setDraft] = useState(DEFAULT_MARKDOWN);
+  const [slug, setSlug] = useState("");
+  const [originalSlug, setOriginalSlug] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
   const [toast, setToast] = useState("");
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -33,136 +44,88 @@ export default function PublicChecklist() {
     toastTimer.current = setTimeout(() => setToast(""), 2200);
   }, []);
 
-  const applyStore = useCallback((data: StoreData) => {
-    if (data.template?.markdown) {
-      setTemplate(parseMarkdown(data.template.markdown));
-      setDraft(data.template.markdown);
-      setMode("view");
-    } else {
-      setTemplate(null);
-      setMode("edit");
-    }
-    setFillState(data.state || {});
+  const loadDocs = useCallback(async () => {
+    const list = await fetchDocs();
+    setDocs(list);
     setLoading(false);
   }, []);
-
-  const loadAll = useCallback(async () => {
-    applyStore(await fetchStore());
-  }, [applyStore]);
 
   useEffect(() => {
     let active = true;
     (async () => {
-      const data = await fetchStore();
-      if (active) applyStore(data);
+      const list = await fetchDocs();
+      if (active) {
+        setDocs(list);
+        setLoading(false);
+      }
     })();
     return () => {
       active = false;
     };
-  }, [applyStore]);
+  }, []);
+
+  const newDoc = useCallback(() => {
+    setDraft(DEFAULT_MARKDOWN);
+    setSlug("");
+    setOriginalSlug(null);
+    setView("edit");
+  }, []);
+
+  const editDoc = useCallback(
+    async (meta: DocMeta) => {
+      const data = await fetchDoc(meta.slug);
+      if (!data || !data.template) {
+        showToast("Dokumen tidak ditemukan");
+        loadDocs();
+        return;
+      }
+      setDraft(data.template.markdown);
+      setSlug(meta.slug);
+      setOriginalSlug(meta.slug);
+      setView("edit");
+    },
+    [loadDocs, showToast]
+  );
+
+  const cancelEdit = useCallback(() => {
+    setView("docs");
+    loadDocs();
+  }, [loadDocs]);
 
   const publish = async () => {
+    let target = slug.trim().toLowerCase();
+    if (!target) target = slugify(extractTitle(draft)) || "checklist";
+    if (!SLUG_RE.test(target)) {
+      showToast("Slug hanya huruf/angka kecil dan tanda hubung.");
+      return;
+    }
+    if (target !== originalSlug && docs.some((d) => d.slug === target)) {
+      showToast("Slug sudah dipakai dokumen lain. Ganti yang baru.");
+      return;
+    }
+    setBusy(true);
     try {
-      await saveStore({ template: { markdown: draft } });
-      setTemplate(parseMarkdown(draft));
-      setMode("view");
+      await saveDoc(target, { template: { markdown: draft } });
+      setOriginalSlug(target);
       showToast("Checklist diterbitkan");
+      setView("docs");
+      await loadDocs();
     } catch {
       showToast("Gagal menyimpan. Coba lagi.");
+    } finally {
+      setBusy(false);
     }
   };
 
-  const cycleSlot = async (id: string, slotIndex: number) => {
-    const item = template
-      ? findSlotUnit(template.blocks, id)
-      : undefined;
-    if (!item) return;
-    const prev = fillState;
-    const slots = resolveSlots(item, prev[id]);
-    if (slotIndex < 0 || slotIndex >= slots.length) return;
-    const next = [...slots];
-    if (next[slotIndex] === 2) return;
-    next[slotIndex] = next[slotIndex] === 1 ? 0 : 1;
-    const optimistic = { ...prev, [id]: { slots: next, at: 0 } };
-    setFillState(optimistic);
+  const removeDoc = async (meta: DocMeta) => {
+    if (!window.confirm(`Hapus "${meta.title}" beserta semua centangnya?`))
+      return;
     try {
-      const data = await saveStore({ state: optimistic });
-      setFillState(data.state || {});
+      await deleteDoc(meta.slug);
+      showToast("Dokumen dihapus");
+      await loadDocs();
     } catch {
-      setFillState(prev);
-      showToast("Gagal menyimpan centang. Coba lagi.");
-    }
-  };
-
-  const resetAll = async () => {
-    try {
-      await saveStore({ state: {} });
-      setFillState({});
-      showToast("Semua centang direset");
-    } catch {
-      showToast("Gagal mereset.");
-    }
-  };
-
-  const copyLink = async () => {
-    try {
-      await navigator.clipboard.writeText(window.location.href);
-      showToast("Tautan disalin");
-    } catch {
-      showToast("Tidak bisa menyalin otomatis, salin dari address bar.");
-    }
-  };
-
-  const shareToWhatsApp = async () => {
-    if (!template) return;
-    const { doneSlots, totalSlots, pct } = getProgress(
-      template.blocks,
-      fillState
-    );
-    let link = "";
-    try {
-      link = window.location.href;
-    } catch {
-      link = "";
-    }
-    const captionText = `${template.title} — ${doneSlots}/${totalSlots} selesai\n${link}`;
-    try {
-      const blob = await buildChecklistImage({
-        title: template.title,
-        blocks: template.blocks,
-        fillState,
-        doneSlots,
-        totalSlots,
-        pct,
-      });
-      const file = new File([blob], "checklist.png", { type: "image/png" });
-      if (navigator.canShare && navigator.canShare({ files: [file] })) {
-        await navigator.share({
-          title: template.title,
-          text: captionText,
-          files: [file],
-        });
-        return;
-      }
-      if (navigator.share) {
-        await navigator.share({ title: template.title, text: captionText });
-        return;
-      }
-      const a = document.createElement("a");
-      a.href = URL.createObjectURL(blob);
-      a.download = "checklist.png";
-      a.click();
-      window.open(
-        `https://wa.me/?text=${encodeURIComponent(captionText)}`,
-        "_blank"
-      );
-      showToast("Gambar diunduh — lampirkan manual di chat WhatsApp");
-    } catch {
-      window.open(
-        `https://wa.me/?text=${encodeURIComponent(captionText)}`,
-        "_blank"
-      );
-      showToast("Gambar gagal dibuat, hanya tautan yang dibagikan");
+      showToast("Gagal menghapus.");
     }
   };
 
@@ -170,41 +133,93 @@ export default function PublicChecklist() {
     <div className="page-outer">
       <div className="page-inner">
         {loading ? (
-          <div className="loading-box">Memuat checklist…</div>
-        ) : mode === "edit" ? (
+          <div className="loading-box">Memuat…</div>
+        ) : view === "docs" ? (
+          <div className="view-narrow">
             <Sheet>
+              <div className="editor-head">
+                <h1 className="editor-title">Kelola checklist</h1>
+                <button className="sheet-btn primary" onClick={newDoc}>
+                  Buat baru
+                </button>
+              </div>
+
+              {docs.length === 0 ? (
+                <div className="docs-empty">
+                  Belum ada checklist. Buat yang pertama lewat tombol di
+                  atas — setiap checklist punya tautan uniknya sendiri.
+                </div>
+              ) : (
+                <div className="docs-list">
+                  {docs.map((d) => (
+                    <div key={d.slug} className="doc-card">
+                      <div className="doc-info">
+                        <div className="doc-title-row">
+                          <Link
+                            className="doc-title"
+                            href={`/d/${d.slug}`}
+                          >
+                            {d.title}
+                          </Link>
+                          <span className="doc-slug">/d/{d.slug}</span>
+                        </div>
+                        <div className="doc-meta">
+                          Diperbarui{" "}
+                          {new Date(d.updatedAt).toLocaleString("id-ID")}
+                        </div>
+                      </div>
+                      <div className="doc-actions">
+                        <Link className="sheet-btn" href={`/d/${d.slug}`}>
+                          Buka
+                        </Link>
+                        <button
+                          className="sheet-btn"
+                          onClick={() => editDoc(d)}
+                        >
+                          Edit
+                        </button>
+                        <button
+                          className="sheet-btn"
+                          onClick={() => removeDoc(d)}
+                        >
+                          Hapus
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <p className="page-footnote">
+                Setiap checklist punya tautan sendiri (contoh:{" "}
+                <code>/d/nama-tautan</code>). Bagikan tautan itu — siapa pun
+                yang membukanya bisa mencentang isinya. Menyusun dan mengubah
+                isi hanya dilakukan dari halaman ini.
+              </p>
+            </Sheet>
+          </div>
+        ) : (
+          <div className="view-narrow">
+            <Sheet>
+              <button className="sheet-btn back-link" onClick={cancelEdit}>
+                ← Daftar
+              </button>
               <ChecklistEditor
+                title={originalSlug ? "Edit checklist" : "Checklist baru"}
                 draft={draft}
                 onDraftChange={setDraft}
-                canCancel={template !== null}
+                canCancel
+                slug={slug}
+                onSlugChange={setSlug}
                 onPublish={publish}
-                onCancel={() => setMode("view")}
+                onCancel={cancelEdit}
               />
+              {busy && <div className="busy-note">Menyimpan…</div>}
             </Sheet>
-          ) : template ? (
-            <div className="view-narrow">
-              <Sheet>
-                <ChecklistViewer
-                  template={template}
-                  fillState={fillState}
-                  onCycleSlot={cycleSlot}
-                  onEdit={() => setMode("edit")}
-                  onShare={shareToWhatsApp}
-                  onCopyLink={copyLink}
-                  onRefresh={loadAll}
-                  onReset={resetAll}
-                />
-              </Sheet>
-            </div>
-          ) : null}
+          </div>
+        )}
 
         {toast && <div className="toast">{toast}</div>}
-
-        <p className="page-footnote">
-          Bagikan tautan ini — siapa pun yang membukanya bisa mencentang
-          isinya. Tidak ada sinkronisasi otomatis, tekan &quot;Perbarui&quot;
-          untuk melihat centangan terbaru dari orang lain.
-        </p>
       </div>
     </div>
   );

@@ -15,3 +15,9 @@ export interface StoreData {
   template: TemplateData | null;
   state: Record<string, ItemState>;
 }
+
+export interface DocMeta {
+  slug: string;
+  title: string;
+  updatedAt: number;
+}

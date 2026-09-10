@@ -118,6 +118,14 @@ function cellSlots(cell: string): SlotValue[] {
   return [cellToSlot(cell) ?? 0];
 }
 
+export function extractTitle(md: string): string {
+  for (const line of (md || "").split("\n")) {
+    const t = line.trim();
+    if (t.startsWith("# ")) return t.slice(2).trim() || "Checklist";
+  }
+  return "Checklist";
+}
+
 export function parseMarkdown(md: string): ParsedDoc {
   const lines = (md || "").split("\n");
   const tableLines = scanTableLines(lines);
