@@ -1,7 +1,8 @@
 import { DatabaseSync } from "node:sqlite";
 import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import path from "node:path";
-import type { DocMeta, StoreData } from "./types";
+import { Pool } from "pg";
+import type { DocMeta, ItemState, StoreData, TemplateData } from "./types";
 import { extractTitle } from "./markdown";
 
 const LEGACY_KEY = "store";
@@ -10,6 +11,154 @@ const INDEX_KEY = "docs:index";
 const DATA_DIR = path.join(process.cwd(), "data");
 const DB_FILE = path.join(DATA_DIR, "checklist.db");
 const LEGACY_FILE = path.join(DATA_DIR, "checklist.json");
+
+/* ---------- Supabase (Postgres) ---------- */
+
+const DATABASE_URL = getEnv("SUPABASE_DATABASE_URL", "DATABASE_URL");
+
+function supabaseEnabled(): boolean {
+  return Boolean(DATABASE_URL);
+}
+
+let pool: Pool | null = null;
+let poolReady: Promise<void> | null = null;
+
+function maybeDecode(value: string): string {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
+function connectParamsFromUrl(url: string): {
+  user: string;
+  password: string;
+  host: string;
+  port: number;
+  database: string;
+} {
+  let rest = url.replace(/^postgres(?:ql)?:\/\//i, "");
+  let database = "postgres";
+  const slash = rest.lastIndexOf("/");
+  if (slash >= 0) {
+    database = rest.slice(slash + 1) || "postgres";
+    rest = rest.slice(0, slash);
+  }
+  let user = "postgres";
+  let password = "";
+  const at = rest.lastIndexOf("@");
+  if (at >= 0) {
+    const auth = rest.slice(0, at);
+    rest = rest.slice(at + 1);
+    const colon = auth.indexOf(":");
+    if (colon >= 0) {
+      user = auth.slice(0, colon);
+      password = auth.slice(colon + 1);
+    } else {
+      user = auth;
+    }
+  }
+  let host = rest;
+  let port = 5432;
+  const lastColon = rest.lastIndexOf(":");
+  if (lastColon >= 0 && /^\d+$/.test(rest.slice(lastColon + 1))) {
+    port = Number(rest.slice(lastColon + 1));
+    host = rest.slice(0, lastColon);
+  }
+  return { user: maybeDecode(user), password: maybeDecode(password), host, port, database };
+}
+
+function getPool(): Pool {
+  if (!pool) {
+    pool = new Pool({
+      ...connectParamsFromUrl(DATABASE_URL!),
+      max: 5,
+      ssl: { rejectUnauthorized: false },
+    });
+  }
+  return pool;
+}
+
+async function ensureTable(): Promise<void> {
+  if (poolReady) return poolReady;
+  poolReady = getPool()
+    .query(
+      `CREATE TABLE IF NOT EXISTS docs (
+         slug TEXT PRIMARY KEY,
+         title TEXT NOT NULL,
+         template JSONB,
+         state JSONB NOT NULL DEFAULT '{}'::jsonb,
+         updated_at BIGINT NOT NULL
+       )`
+    )
+    .then(() => undefined);
+  await poolReady;
+}
+
+async function supabaseListDocs(): Promise<DocMeta[]> {
+  await ensureTable();
+  const { rows } = await getPool().query<{
+    slug: string;
+    title: string;
+    updated_at: string | number;
+  }>("SELECT slug, title, updated_at FROM docs ORDER BY updated_at DESC");
+  return rows.map((r) => ({
+    slug: r.slug,
+    title: r.title,
+    updatedAt: Number(r.updated_at),
+  }));
+}
+
+async function supabaseReadDoc(slug: string): Promise<StoreData | null> {
+  await ensureTable();
+  const { rows } = await getPool().query<{
+    template: unknown;
+    state: unknown;
+  }>("SELECT template, state FROM docs WHERE slug = $1", [slug]);
+  const row = rows[0];
+  if (!row) return null;
+  return {
+    template: (row.template as TemplateData | null) ?? null,
+    state: (row.state as Record<string, ItemState>) ?? {},
+  };
+}
+
+async function supabaseWriteDoc(slug: string, data: StoreData): Promise<void> {
+  await ensureTable();
+  let title = data.template
+    ? extractTitle(data.template.markdown)
+    : "Checklist";
+  if (!title || !data.template) {
+    const { rows } = await getPool().query<{ title: string }>(
+      "SELECT title FROM docs WHERE slug = $1",
+      [slug]
+    );
+    title = rows[0]?.title ?? title;
+  }
+  const updatedAt = data.template?.updatedAt ?? Date.now();
+  await getPool().query(
+    `INSERT INTO docs (slug, title, template, state, updated_at)
+     VALUES ($1, $2, $3, $4, $5)
+     ON CONFLICT (slug) DO UPDATE SET
+       title = EXCLUDED.title,
+       template = EXCLUDED.template,
+       state = EXCLUDED.state,
+       updated_at = EXCLUDED.updated_at`,
+    [
+      slug,
+      title,
+      data.template ? JSON.stringify(data.template) : null,
+      JSON.stringify(data.state),
+      updatedAt,
+    ]
+  );
+}
+
+async function supabaseDeleteDoc(slug: string): Promise<void> {
+  await ensureTable();
+  await getPool().query("DELETE FROM docs WHERE slug = $1", [slug]);
+}
 
 /* ---------- remote (Upstash Redis) ---------- */
 
@@ -225,12 +374,14 @@ async function migrateLegacyDoc(): Promise<void> {
 /* ---------- API publik ---------- */
 
 export async function listDocs(): Promise<DocMeta[]> {
+  if (supabaseEnabled()) return supabaseListDocs();
   await migrateLegacyDoc();
   const list = await readIndex();
   return [...list].sort((a, b) => b.updatedAt - a.updatedAt);
 }
 
 export async function readDoc(slug: string): Promise<StoreData | null> {
+  if (supabaseEnabled()) return supabaseReadDoc(slug);
   await migrateLegacyDoc();
   const raw = await kvGet(docKey(slug));
   if (!raw) return null;
@@ -246,6 +397,7 @@ export async function readDoc(slug: string): Promise<StoreData | null> {
 }
 
 export async function writeDoc(slug: string, data: StoreData): Promise<void> {
+  if (supabaseEnabled()) return supabaseWriteDoc(slug, data);
   await kvSet(docKey(slug), JSON.stringify(data));
   const list = await readIndex();
   const idx = list.findIndex((d) => d.slug === slug);
@@ -264,6 +416,7 @@ export async function writeDoc(slug: string, data: StoreData): Promise<void> {
 }
 
 export async function deleteDoc(slug: string): Promise<void> {
+  if (supabaseEnabled()) return supabaseDeleteDoc(slug);
   await kvDel(docKey(slug));
   const list = await readIndex();
   await writeIndex(list.filter((d) => d.slug !== slug));
