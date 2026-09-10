@@ -20,29 +20,35 @@ function getEnv(...names: string[]): string | undefined {
 }
 
 function remoteUrl(): string | undefined {
-  return getEnv("KV_REST_API_URL", "UPSTASH_REDIS_REST_URL");
+  return getEnv("UPSTASH_REDIS_REST_URL", "KV_REST_API_URL");
 }
 
 function remoteEnabled(): boolean {
   return Boolean(remoteUrl());
 }
 
-let kvPromise: Promise<import("@vercel/kv").VercelKV> | null = null;
+let kvPromise: Promise<import("@upstash/redis").Redis | null> | null = null;
 
-function getKv(): Promise<import("@vercel/kv").VercelKV> {
-  kvPromise ??= import("@vercel/kv").then((mod) =>
-    mod.createClient({
-      url: remoteUrl()!,
-      token:
-        getEnv("KV_REST_API_TOKEN", "UPSTASH_REDIS_REST_TOKEN") ?? "",
-    })
-  );
+function getKv(): Promise<import("@upstash/redis").Redis | null> {
+  kvPromise ??= import("@upstash/redis")
+    .then((mod) =>
+      new mod.Redis({
+        url: remoteUrl()!,
+        token:
+          getEnv("UPSTASH_REDIS_REST_TOKEN", "KV_REST_API_TOKEN") ?? "",
+      })
+    )
+    .catch((err) => {
+      console.error("Gagal inisialisasi klien Redis:", err);
+      return null;
+    });
   return kvPromise;
 }
 
 async function readRemote(): Promise<StoreData | null> {
   try {
     const client = await getKv();
+    if (!client) return null;
     const raw = await client.get<Partial<StoreData>>(STORE_KEY);
     if (!raw) return null;
     return {
@@ -57,12 +63,25 @@ async function readRemote(): Promise<StoreData | null> {
 
 async function writeRemote(data: StoreData): Promise<void> {
   const client = await getKv();
+  if (!client) return;
   await client.set(STORE_KEY, data);
 }
 
 /* ---------- local (SQLite) fallback untuk dev tanpa env ---------- */
 
 let db: DatabaseSync | null = null;
+let localWarned = false;
+const memoryStore = new Map<string, string>();
+
+function warnLocal(fallback: string): void {
+  if (!localWarned) {
+    localWarned = true;
+    console.warn(
+      `Penyimpanan file tidak tersedia (${fallback}); memakai memori. ` +
+        "Konfigurasi KV (KV_REST_API_URL) untuk persistensi."
+    );
+  }
+}
 
 function migrateLegacy(dbConn: DatabaseSync): void {
   const hasStore = dbConn.prepare("SELECT 1 FROM kv WHERE key = ?").get(STORE_KEY);
@@ -92,28 +111,44 @@ function getDb(): DatabaseSync {
 }
 
 function readLocal(): StoreData {
-  const row = getDb()
-    .prepare("SELECT value FROM kv WHERE key = ?")
-    .get(STORE_KEY) as { value?: string } | undefined;
-  if (!row?.value) return { template: null, state: {} };
   try {
+    const row = getDb()
+      .prepare("SELECT value FROM kv WHERE key = ?")
+      .get(STORE_KEY) as { value?: string } | undefined;
+    if (!row?.value) return { template: null, state: {} };
     const parsed = JSON.parse(row.value) as Partial<StoreData>;
     return {
       template: parsed.template ?? null,
       state: parsed.state ?? {},
     };
   } catch {
-    return { template: null, state: {} };
+    warnLocal("read-only / EROFS");
+    const value = memoryStore.get(STORE_KEY);
+    if (!value) return { template: null, state: {} };
+    try {
+      const parsed = JSON.parse(value) as Partial<StoreData>;
+      return {
+        template: parsed.template ?? null,
+        state: parsed.state ?? {},
+      };
+    } catch {
+      return { template: null, state: {} };
+    }
   }
 }
 
 function writeLocal(data: StoreData): void {
-  getDb()
-    .prepare(
-      "INSERT INTO kv (key, value) VALUES (?, ?) " +
-        "ON CONFLICT(key) DO UPDATE SET value = excluded.value"
-    )
-    .run(STORE_KEY, JSON.stringify(data));
+  try {
+    getDb()
+      .prepare(
+        "INSERT INTO kv (key, value) VALUES (?, ?) " +
+          "ON CONFLICT(key) DO UPDATE SET value = excluded.value"
+      )
+      .run(STORE_KEY, JSON.stringify(data));
+  } catch {
+    warnLocal("read-only / EROFS");
+    memoryStore.set(STORE_KEY, JSON.stringify(data));
+  }
 }
 
 /* ---------- public API ---------- */
