@@ -126,10 +126,11 @@ export default function ChecklistViewer({
                   <tbody>
                     {b.rows.map((row) => {
                       const slots = resolveSlots(row, fillState[row.id]);
+                      const allDone = slots.length > 0 && slots.every((s) => s === 1);
                       return (
-                        <tr key={row.id}>
+                        <tr key={row.id} className={allDone ? "checked" : undefined}>
                           <td className="table-num">{row.num}</td>
-                          <td className="table-name">
+                          <td className={`table-name${allDone ? " checked" : ""}`}>
                             {row.text}
                           </td>
                           {slots.map((s, si) => (
@@ -167,8 +168,9 @@ export default function ChecklistViewer({
           }
           if (b.type === "item") {
             const slots = resolveSlots(b, fillState[b.id]);
+            const allDone = slots.length > 0 && slots.every((s) => s === 1);
             return (
-              <div key={b.id} className="check-card">
+              <div key={b.id} className={`check-card${allDone ? " checked" : ""}`}>
                 <div className="slot-group">
                   {slots.map((s, si) =>
                     s === 2 ? (
@@ -196,7 +198,7 @@ export default function ChecklistViewer({
                   )}
                 </div>
                 <div className="check-card-main">
-                  <div className="check-card-text">{b.text}</div>
+                  <div className={`check-card-text${allDone ? " checked" : ""}`}>{b.text}</div>
                 </div>
               </div>
             );
