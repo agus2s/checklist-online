@@ -82,7 +82,11 @@ export async function POST(request: Request, ctx: SlugCtx) {
     state?: Record<string, unknown>;
   };
 
-  const data = (await readDoc(slug)) ?? { template: null, state: {} };
+  const existing = await readDoc(slug);
+  if (!existing && !partial.template) {
+    return Response.json({ error: "Checklist tidak ditemukan" }, { status: 404 });
+  }
+  const data = existing ?? { template: null, state: {} };
   const next: StoreData = {
     template:
       "template" in partial

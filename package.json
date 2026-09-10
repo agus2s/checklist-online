@@ -9,7 +9,6 @@
     "lint": "eslint"
   },
   "dependencies": {
-    "@upstash/redis": "^1.38.4",
     "marked": "^18.0.12",
     "next": "16.3.4",
     "pg": "^8.23.0",
