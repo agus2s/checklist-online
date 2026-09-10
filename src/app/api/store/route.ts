@@ -28,7 +28,7 @@ function sanitizeState(state: Record<string, unknown> | undefined): Record<strin
 }
 
 export async function GET() {
-  return Response.json(readStore());
+  return Response.json(await readStore());
 }
 
 export async function POST(request: Request) {
@@ -47,7 +47,7 @@ export async function POST(request: Request) {
     state?: Record<string, unknown>;
   };
 
-  const data = readStore();
+  const data = await readStore();
   const next: StoreData = {
     template:
       "template" in partial
@@ -63,6 +63,6 @@ export async function POST(request: Request) {
         : data.template,
     state: "state" in partial ? sanitizeState(partial.state) : data.state,
   };
-  writeStore(next);
+  await writeStore(next);
   return Response.json(next);
 }
