@@ -1,39 +1,7 @@
-import { promises as fs } from "node:fs";
-import path from "node:path";
 import type { ItemState, SlotValue, StoreData } from "../../../lib/types";
+import { readStore, writeStore } from "../../../lib/db";
 
 export const dynamic = "force-dynamic";
-
-const DATA_DIR = path.join(process.cwd(), "data");
-const DATA_FILE = path.join(DATA_DIR, "checklist.json");
-
-async function readStore(): Promise<StoreData> {
-  try {
-    const raw = await fs.readFile(DATA_FILE, "utf8");
-    const parsed = JSON.parse(raw) as Partial<StoreData>;
-    return {
-      template: parsed.template ?? null,
-      state: parsed.state ?? {},
-    };
-  } catch {
-    return { template: null, state: {} };
-  }
-}
-
-let writeQueue: Promise<void> = Promise.resolve();
-
-function commit(data: StoreData): Promise<StoreData> {
-  const run = writeQueue.then(async () => {
-    await fs.mkdir(DATA_DIR, { recursive: true });
-    await fs.writeFile(DATA_FILE, JSON.stringify(data, null, 2), "utf8");
-    return data;
-  });
-  writeQueue = run.then(
-    () => undefined,
-    () => undefined
-  );
-  return run;
-}
 
 function sanitizeSlots(raw: unknown): SlotValue[] {
   if (!Array.isArray(raw)) return [];
@@ -60,7 +28,7 @@ function sanitizeState(state: Record<string, unknown> | undefined): Record<strin
 }
 
 export async function GET() {
-  return Response.json(await readStore());
+  return Response.json(readStore());
 }
 
 export async function POST(request: Request) {
@@ -79,7 +47,7 @@ export async function POST(request: Request) {
     state?: Record<string, unknown>;
   };
 
-  const data = await readStore();
+  const data = readStore();
   const next: StoreData = {
     template:
       "template" in partial
@@ -95,5 +63,6 @@ export async function POST(request: Request) {
         : data.template,
     state: "state" in partial ? sanitizeState(partial.state) : data.state,
   };
-  return Response.json(await commit(next));
+  writeStore(next);
+  return Response.json(next);
 }

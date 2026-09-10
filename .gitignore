@@ -10,7 +10,7 @@
 # production
 /build
 
-# server-side checklist data (api/store)
+# server-side checklist data (api/store, sqlite)
 /data
 
 # typescript
