@@ -13,7 +13,6 @@ interface ChecklistViewerProps {
   onEdit?: () => void;
   onShare: () => void;
   onCopyLink: () => void;
-  onReset: () => void;
 }
 
 interface SectionStat {
@@ -55,7 +54,6 @@ export default function ChecklistViewer({
   onEdit,
   onShare,
   onCopyLink,
-  onReset,
 }: ChecklistViewerProps) {
   const { blocks } = template;
   const { items, doneSlots, totalSlots, pct } = getProgress(blocks, fillState);
@@ -170,7 +168,11 @@ export default function ChecklistViewer({
             const slots = resolveSlots(b, fillState[b.id]);
             const allDone = slots.length > 0 && slots.every((s) => s === 1);
             return (
-              <div key={b.id} className={`check-card${allDone ? " checked" : ""}`}>
+              <div
+                key={b.id}
+                className={`check-card${allDone ? " checked" : ""}`}
+                onClick={() => onCycleSlot(b.id, 0)}
+              >
                 <div className="slot-group">
                   {slots.map((s, si) =>
                     s === 2 ? (
@@ -184,7 +186,7 @@ export default function ChecklistViewer({
                         aria-checked={s === 1}
                         tabIndex={0}
                         className="slot-hit"
-                        onClick={() => onCycleSlot(b.id, si)}
+                        onClick={(e) => { e.stopPropagation(); onCycleSlot(b.id, si); }}
                         onKeyDown={(e) => {
                           if (e.key === "Enter" || e.key === " ") {
                             e.preventDefault();
@@ -213,9 +215,6 @@ export default function ChecklistViewer({
         </button>
         <button className="sheet-btn" onClick={onCopyLink}>
           Salin tautan
-        </button>
-        <button className="sheet-btn" onClick={onReset}>
-          Reset semua centang
         </button>
       </div>
     </>

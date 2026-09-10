@@ -19,13 +19,13 @@ import type { DocMeta } from "../lib/types";
 
 const SLUG_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
-function slugify(value: string): string {
-  return value
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
+function randomSlug(length = 6): string {
+  const chars = "abcdefghijklmnopqrstuvwxyz0123456789";
+  let out = "";
+  for (let i = 0; i < length; i++) {
+    out += chars[Math.floor(Math.random() * chars.length)];
+  }
+  return out;
 }
 
 export default function EditorHome() {
@@ -69,7 +69,7 @@ export default function EditorHome() {
   const newDoc = useCallback(() => {
     setDraft(DEFAULT_MARKDOWN);
     setDocTitle(extractTitle(DEFAULT_MARKDOWN));
-    setSlug("");
+    setSlug(randomSlug());
     setOriginalSlug(null);
     setView("edit");
   }, []);
@@ -98,9 +98,8 @@ export default function EditorHome() {
 
   const publish = async () => {
     const finalDraft = setMarkdownTitle(draft, docTitle);
-    const effectiveTitle = docTitle.trim() || extractTitle(draft);
     let target = slug.trim().toLowerCase();
-    if (!target) target = slugify(effectiveTitle) || "checklist";
+    if (!target) target = randomSlug();
     if (!SLUG_RE.test(target)) {
       showToast("Slug hanya huruf/angka kecil dan tanda hubung.");
       return;

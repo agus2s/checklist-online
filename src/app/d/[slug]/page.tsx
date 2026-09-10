@@ -148,17 +148,6 @@ export default function VisitChecklist() {
     }
   };
 
-  const resetAll = async () => {
-    pendingRef.current = {};
-    try {
-      const data = await saveDoc(slug, { state: {} });
-      setFillState(data.state || {});
-      showToast("Semua centang direset");
-    } catch {
-      showToast("Gagal mereset.");
-    }
-  };
-
   const copyLink = async () => {
     try {
       await navigator.clipboard.writeText(window.location.href);
@@ -235,7 +224,6 @@ export default function VisitChecklist() {
                 onCycleSlot={cycleSlot}
                 onShare={shareToWhatsApp}
                 onCopyLink={copyLink}
-                onReset={resetAll}
               />
             </Sheet>
           </div>

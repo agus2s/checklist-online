@@ -33,12 +33,7 @@ body {
 
 .page-outer {
   min-height: 100%;
-  background: radial-gradient(
-    ellipse at 50% -10%,
-    #66B583 0%,
-    var(--outer) 55%,
-    #2C5F46 100%
-  );
+  background: var(--outer);
   padding: 32px 16px;
   display: flex;
   justify-content: center;
@@ -287,7 +282,7 @@ input.nameinput:focus {
   border-radius: 10px;
   cursor: pointer;
   user-select: none;
-  min-height: 40px;
+  min-height: 36px;
 }
 
 .check-card:hover {
@@ -329,10 +324,10 @@ input.nameinput:focus {
 }
 
 .slot-box {
-  width: 28px;
-  height: 28px;
-  border: 2.5px solid var(--ink);
-  border-radius: 8px;
+  width: 24px;
+  height: 24px;
+  border: 2px solid var(--ink);
+  border-radius: 6px;
   display: grid;
   place-items: center;
   background: transparent;
@@ -416,20 +411,20 @@ input.nameinput:focus {
 }
 
 .check-table .slot-box {
-  width: 22px;
-  height: 22px;
-  border-radius: 6px;
+  width: 20px;
+  height: 20px;
+  border-radius: 5px;
   border-width: 2px;
 }
 
 .check-table .slot-box.done svg {
-  width: 14px;
-  height: 12px;
+  width: 12px;
+  height: 10px;
 }
 
 .check-table .slot-box.locked svg {
-  width: 11px;
-  height: 11px;
+  width: 10px;
+  height: 10px;
 }
 
 .check-table .slot-hit {
