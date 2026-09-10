@@ -25,6 +25,8 @@ export default function VisitChecklist() {
   const [fillState, setFillState] = useState<Record<string, ItemState>>({});
   const [toast, setToast] = useState("");
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingRef = useRef<Record<string, ItemState>>({});
+  const loadBusyRef = useRef(false);
 
   const showToast = useCallback((msg: string) => {
     setToast(msg);
@@ -39,7 +41,15 @@ export default function VisitChecklist() {
       } else {
         setTemplate(null);
       }
-      setFillState(data.state || {});
+      const pending = pendingRef.current;
+      const server = data.state || {};
+      const next: Record<string, ItemState> = { ...server };
+      for (const [id, p] of Object.entries(pending)) {
+        const s = server[id];
+        if (!s || (p.at ?? 0) >= (s.at ?? 0)) next[id] = p;
+        else delete pending[id];
+      }
+      setFillState(next);
       setLoaded(true);
     },
     []
@@ -51,11 +61,17 @@ export default function VisitChecklist() {
       setLoaded(true);
       return;
     }
-    const data = await fetchDoc(slug);
-    if (data) applyDoc(data);
-    else {
-      setTemplate(null);
-      setLoaded(true);
+    if (loadBusyRef.current) return;
+    loadBusyRef.current = true;
+    try {
+      const data = await fetchDoc(slug);
+      if (data) applyDoc(data);
+      else {
+        setTemplate(null);
+        setLoaded(true);
+      }
+    } finally {
+      loadBusyRef.current = false;
     }
   }, [slug, applyDoc]);
 
@@ -81,10 +97,24 @@ export default function VisitChecklist() {
   }, [slug, applyDoc]);
 
   useEffect(() => {
-    const timer = setInterval(() => {
-      load();
-    }, 10000);
-    return () => clearInterval(timer);
+    const poll = () => load();
+    let timer: ReturnType<typeof setInterval> | null = null;
+    const start = () => {
+      if (!timer) timer = setInterval(poll, 1500);
+    };
+    const stop = () => {
+      if (timer) {
+        clearInterval(timer);
+        timer = null;
+      }
+    };
+    const onVis = () => (document.hidden ? stop() : start());
+    document.addEventListener("visibilitychange", onVis);
+    start();
+    return () => {
+      stop();
+      document.removeEventListener("visibilitychange", onVis);
+    };
   }, [load]);
 
   const cycleSlot = async (id: string, slotIndex: number) => {
@@ -97,18 +127,29 @@ export default function VisitChecklist() {
     const next = [...slots];
     if (next[slotIndex] === 2) return;
     next[slotIndex] = next[slotIndex] === 1 ? 0 : 1;
-    const optimistic = { ...prev, [id]: { slots: next, at: 0 } };
+    const optimistic = { ...prev, [id]: { slots: next, at: Date.now() } };
+    pendingRef.current[id] = optimistic[id];
     setFillState(optimistic);
     try {
       const data = await saveDoc(slug, { state: optimistic });
-      setFillState(data.state || {});
+      delete pendingRef.current[id];
+      const server = data.state || {};
+      const merged = { ...server };
+      for (const [pid, p] of Object.entries(pendingRef.current)) {
+        const s = server[pid];
+        if (!s || (p.at ?? 0) >= (s.at ?? 0)) merged[pid] = p;
+        else delete pendingRef.current[pid];
+      }
+      setFillState(merged);
     } catch {
+      delete pendingRef.current[id];
       setFillState(prev);
       showToast("Gagal menyimpan centang. Coba lagi.");
     }
   };
 
   const resetAll = async () => {
+    pendingRef.current = {};
     try {
       const data = await saveDoc(slug, { state: {} });
       setFillState(data.state || {});
@@ -194,7 +235,6 @@ export default function VisitChecklist() {
                 onCycleSlot={cycleSlot}
                 onShare={shareToWhatsApp}
                 onCopyLink={copyLink}
-                onRefresh={load}
                 onReset={resetAll}
               />
             </Sheet>
@@ -219,8 +259,8 @@ export default function VisitChecklist() {
 
         <p className="page-footnote">
           Bagikan tautan ini — siapa pun yang membukanya bisa mencentang
-          isinya. Halaman memuat data terbaru otomatis setiap 10 detik;
-          klik &quot;Perbarui&quot; untuk langsung merefresh sekarang.
+          isinya. Perubahan dari semua pengguna muncul hampir seketika
+          (memuat ulang otomatis setiap 1,5 detik saat tab terbuka).
         </p>
       </div>
     </div>

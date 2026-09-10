@@ -11,6 +11,8 @@ interface ChecklistEditorProps {
   canCancel: boolean;
   slug?: string;
   onSlugChange?: (value: string) => void;
+  docTitle?: string;
+  onDocTitleChange?: (value: string) => void;
   onPublish: () => void;
   onCancel: () => void;
 }
@@ -28,6 +30,8 @@ export default function ChecklistEditor({
   canCancel,
   slug,
   onSlugChange,
+  docTitle,
+  onDocTitleChange,
   onPublish,
   onCancel,
 }: ChecklistEditorProps) {
@@ -59,6 +63,20 @@ export default function ChecklistEditor({
           Bantuan
         </button>
       </div>
+      {docTitle !== undefined && onDocTitleChange && (
+        <div className="title-field">
+          <label className="title-label" htmlFor="title-input">
+            Judul
+          </label>
+          <input
+            id="title-input"
+            className="title-input"
+            value={docTitle}
+            onChange={(e) => onDocTitleChange(e.target.value)}
+            placeholder="Nama checklist"
+          />
+        </div>
+      )}
       {slug !== undefined && onSlugChange && (
         <div className="slug-field">
           <label className="slug-label" htmlFor="slug-input">
@@ -144,7 +162,9 @@ export default function ChecklistEditor({
                 Tulis pakai markdown: <code>#</code> untuk judul,{" "}
                 <code>##</code> untuk bagian, <code>- [ ] Tugas</code> untuk
                 satu kotak centang, atau <code>- [ ] [ ] [ ] Fikih</code>{" "}
-                untuk beberapa kotak per baris. Klik kotak di preview untuk
+                untuk beberapa kotak per baris. Judul juga bisa diatur lewat kolom{" "}
+                <code>Judul</code> di atas dan otomatis tersimpan sebagai baris{" "}
+                <code>#</code> saat diterbitkan. Klik kotak di preview untuk
                 mencentang atau membuka centang. Awalan <code>[-]</code>{" "}
                 mengunci kotak: tetap terlihat tapi tidak bisa diklik.
               </p>

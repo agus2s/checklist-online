@@ -126,6 +126,19 @@ export function extractTitle(md: string): string {
   return "Checklist";
 }
 
+export function setMarkdownTitle(md: string, rawTitle: string): string {
+  const title = rawTitle.trim();
+  if (!title) return md;
+  const lines = (md || "").split("\n");
+  for (let i = 0; i < lines.length; i++) {
+    if (lines[i].startsWith("# ")) {
+      lines[i] = `# ${title}`;
+      return lines.join("\n");
+    }
+  }
+  return `# ${title}\n\n${md || ""}`;
+}
+
 export function parseMarkdown(md: string): ParsedDoc {
   const lines = (md || "").split("\n");
   const tableLines = scanTableLines(lines);

@@ -1,10 +1,10 @@
 const AVATAR_COLORS = [
-  "#5B7461",
-  "#B4402F",
-  "#8A6D3B",
-  "#3B6B8A",
-  "#7A5B8F",
-  "#B0563A",
+  "#2EAD63",
+  "#F2543D",
+  "#E0A32E",
+  "#2E8FD6",
+  "#A766DD",
+  "#F2703D",
 ];
 
 function hashName(name: string): number {

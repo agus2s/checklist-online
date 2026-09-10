@@ -36,6 +36,20 @@ function sanitizeState(
   return clean;
 }
 
+function mergeState(
+  local: Record<string, ItemState>,
+  incoming: Record<string, ItemState>
+): Record<string, ItemState> {
+  const merged: Record<string, ItemState> = { ...local };
+  for (const [id, nextItem] of Object.entries(incoming)) {
+    const prevItem = local[id];
+    if (!prevItem || (prevItem.at ?? 0) <= (nextItem.at ?? 0)) {
+      merged[id] = nextItem;
+    }
+  }
+  return merged;
+}
+
 type SlugCtx = { params: Promise<{ slug: string }> };
 
 export async function GET(_request: Request, ctx: SlugCtx) {
@@ -82,7 +96,10 @@ export async function POST(request: Request, ctx: SlugCtx) {
             }
           : null
         : data.template,
-    state: "state" in partial ? sanitizeState(partial.state) : data.state,
+    state:
+      "state" in partial
+        ? mergeState(data.state, sanitizeState(partial.state))
+        : data.state,
   };
   await writeDoc(slug, next);
   return Response.json(next);

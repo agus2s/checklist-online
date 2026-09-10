@@ -22,7 +22,7 @@ export default function ProgressRing({ pct }: ProgressRingProps) {
           cy={SIZE / 2}
           r={r}
           fill="none"
-          stroke="#DDD5C2"
+          stroke="#EDE3C9"
           strokeWidth={STROKE}
         />
         <circle

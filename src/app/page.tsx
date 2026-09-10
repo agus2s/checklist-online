@@ -7,6 +7,7 @@ import ChecklistEditor from "../components/ChecklistEditor";
 import {
   DEFAULT_MARKDOWN,
   extractTitle,
+  setMarkdownTitle,
 } from "../lib/markdown";
 import {
   deleteDoc,
@@ -32,6 +33,7 @@ export default function EditorHome() {
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState<"docs" | "edit">("docs");
   const [draft, setDraft] = useState(DEFAULT_MARKDOWN);
+  const [docTitle, setDocTitle] = useState(extractTitle(DEFAULT_MARKDOWN));
   const [slug, setSlug] = useState("");
   const [originalSlug, setOriginalSlug] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -66,6 +68,7 @@ export default function EditorHome() {
 
   const newDoc = useCallback(() => {
     setDraft(DEFAULT_MARKDOWN);
+    setDocTitle(extractTitle(DEFAULT_MARKDOWN));
     setSlug("");
     setOriginalSlug(null);
     setView("edit");
@@ -80,6 +83,7 @@ export default function EditorHome() {
         return;
       }
       setDraft(data.template.markdown);
+      setDocTitle(extractTitle(data.template.markdown));
       setSlug(meta.slug);
       setOriginalSlug(meta.slug);
       setView("edit");
@@ -93,8 +97,10 @@ export default function EditorHome() {
   }, [loadDocs]);
 
   const publish = async () => {
+    const finalDraft = setMarkdownTitle(draft, docTitle);
+    const effectiveTitle = docTitle.trim() || extractTitle(draft);
     let target = slug.trim().toLowerCase();
-    if (!target) target = slugify(extractTitle(draft)) || "checklist";
+    if (!target) target = slugify(effectiveTitle) || "checklist";
     if (!SLUG_RE.test(target)) {
       showToast("Slug hanya huruf/angka kecil dan tanda hubung.");
       return;
@@ -105,7 +111,7 @@ export default function EditorHome() {
     }
     setBusy(true);
     try {
-      await saveDoc(target, { template: { markdown: draft } });
+      await saveDoc(target, { template: { markdown: finalDraft } });
       setOriginalSlug(target);
       showToast("Checklist diterbitkan");
       setView("docs");
@@ -211,6 +217,8 @@ export default function EditorHome() {
                 canCancel
                 slug={slug}
                 onSlugChange={setSlug}
+                docTitle={docTitle}
+                onDocTitleChange={setDocTitle}
                 onPublish={publish}
                 onCancel={cancelEdit}
               />

@@ -13,7 +13,6 @@ interface ChecklistViewerProps {
   onEdit?: () => void;
   onShare: () => void;
   onCopyLink: () => void;
-  onRefresh: () => void;
   onReset: () => void;
 }
 
@@ -56,7 +55,6 @@ export default function ChecklistViewer({
   onEdit,
   onShare,
   onCopyLink,
-  onRefresh,
   onReset,
 }: ChecklistViewerProps) {
   const { blocks } = template;
@@ -128,15 +126,10 @@ export default function ChecklistViewer({
                   <tbody>
                     {b.rows.map((row) => {
                       const slots = resolveSlots(row, fillState[row.id]);
-                      const allDone =
-                        slots.length > 0 && slots.every((s) => s === 1);
                       return (
-                        <tr
-                          key={row.id}
-                          className={allDone ? "checked" : undefined}
-                        >
+                        <tr key={row.id}>
                           <td className="table-num">{row.num}</td>
-                          <td className={`table-name${allDone ? " checked" : ""}`}>
+                          <td className="table-name">
                             {row.text}
                           </td>
                           {slots.map((s, si) => (
@@ -174,12 +167,8 @@ export default function ChecklistViewer({
           }
           if (b.type === "item") {
             const slots = resolveSlots(b, fillState[b.id]);
-            const allDone = slots.length > 0 && slots.every((s) => s === 1);
             return (
-              <div
-                key={b.id}
-                className={`check-card${allDone ? " checked" : ""}`}
-              >
+              <div key={b.id} className="check-card">
                 <div className="slot-group">
                   {slots.map((s, si) =>
                     s === 2 ? (
@@ -207,9 +196,7 @@ export default function ChecklistViewer({
                   )}
                 </div>
                 <div className="check-card-main">
-                  <div className={`check-card-text${allDone ? " checked" : ""}`}>
-                    {b.text}
-                  </div>
+                  <div className="check-card-text">{b.text}</div>
                 </div>
               </div>
             );
@@ -224,9 +211,6 @@ export default function ChecklistViewer({
         </button>
         <button className="sheet-btn" onClick={onCopyLink}>
           Salin tautan
-        </button>
-        <button className="sheet-btn" onClick={onRefresh}>
-          Perbarui
         </button>
         <button className="sheet-btn" onClick={onReset}>
           Reset semua centang

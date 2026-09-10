@@ -120,12 +120,12 @@ export function buildChecklistImage(input: SnapshotInput): Promise<Blob> {
       const ctx = canvas.getContext("2d")!;
       ctx.scale(scale, scale);
 
-      ctx.fillStyle = "#33443C";
+      ctx.fillStyle = "#3D7A5B";
       ctx.fillRect(0, 0, WIDTH, height);
-      ctx.fillStyle = "#EAE4D6";
+      ctx.fillStyle = "#FFF6E6";
       ctx.fillRect(0, 10, WIDTH, height - 20);
 
-      ctx.fillStyle = "#26313A";
+      ctx.fillStyle = "#2A3441";
       ctx.font = "bold 24px monospace";
       ctx.fillText(title, PADDING_X, 56);
 
@@ -133,25 +133,25 @@ export function buildChecklistImage(input: SnapshotInput): Promise<Blob> {
       ctx.fillStyle = "#5B6A72";
       ctx.fillText(`${doneSlots} dari ${totalSlots} selesai (${pct}%)`, PADDING_X, 82);
 
-      ctx.fillStyle = "#DDD5C2";
+      ctx.fillStyle = "#EDE3C9";
       ctx.fillRect(PADDING_X, 94, WIDTH - PADDING_X * 2, 8);
-      ctx.fillStyle = "#5B7461";
+      ctx.fillStyle = "#2EAD63";
       ctx.fillRect(PADDING_X, 94, ((WIDTH - PADDING_X * 2) * pct) / 100, 8);
 
       let y = 132;
       laidOut.forEach((b) => {
         if (b.type === "section") {
-          ctx.fillStyle = "#26313A";
+          ctx.fillStyle = "#2A3441";
           ctx.font = "bold 16px monospace";
           ctx.fillText(b.text, PADDING_X, y);
-          ctx.strokeStyle = "#C7BFA9";
+          ctx.strokeStyle = "#E7DEC4";
           ctx.beginPath();
           ctx.moveTo(PADDING_X, y + 8);
           ctx.lineTo(WIDTH - PADDING_X, y + 8);
           ctx.stroke();
           y += 40;
         } else if (b.type === "divider") {
-          ctx.strokeStyle = "#C7BFA9";
+          ctx.strokeStyle = "#E7DEC4";
           ctx.beginPath();
           ctx.moveTo(PADDING_X, y);
           ctx.lineTo(WIDTH - PADDING_X, y);
@@ -161,7 +161,7 @@ export function buildChecklistImage(input: SnapshotInput): Promise<Blob> {
           y += 10;
         } else if (b.type === "paragraph") {
           const wrapped = b.wrapped ?? [""];
-          ctx.fillStyle = "#26313A";
+          ctx.fillStyle = "#2A3441";
           ctx.font = "14px monospace";
           wrapped.forEach((line) => {
             ctx.fillText(line, PADDING_X, y);
@@ -182,13 +182,13 @@ export function buildChecklistImage(input: SnapshotInput): Promise<Blob> {
             slots.forEach((s, i) => {
               const x = PADDING_X + i * 26;
               if (s === 0) {
-                ctx.strokeStyle = "#26313A";
+                ctx.strokeStyle = "#2A3441";
                 ctx.lineWidth = 2;
                 ctx.strokeRect(x, y - 15, 20, 20);
               } else if (s === 1) {
-                ctx.fillStyle = "#26313A";
+                ctx.fillStyle = "#2A3441";
                 ctx.fillRect(x, y - 15, 20, 20);
-                ctx.strokeStyle = "#EAE4D6";
+                ctx.strokeStyle = "#FFF6E6";
                 ctx.lineWidth = 2;
                 ctx.beginPath();
                 ctx.moveTo(x + 4, y - 5);
@@ -196,9 +196,9 @@ export function buildChecklistImage(input: SnapshotInput): Promise<Blob> {
                 ctx.lineTo(x + 16, y - 12);
                 ctx.stroke();
               } else {
-                ctx.fillStyle = "#D9D3C1";
+                ctx.fillStyle = "#EDE6D2";
                 ctx.fillRect(x, y - 15, 20, 20);
-                ctx.strokeStyle = "#B9B2A0";
+                ctx.strokeStyle = "#CDC3A8";
                 ctx.lineWidth = 2;
                 ctx.strokeRect(x, y - 15, 20, 20);
                 ctx.strokeStyle = "#8A8375";
@@ -209,7 +209,7 @@ export function buildChecklistImage(input: SnapshotInput): Promise<Blob> {
               }
             });
             const textX = PADDING_X + (b.slotCount ?? slots.length) * 26 + 8;
-            ctx.fillStyle = allDone ? "#8A8375" : "#26313A";
+            ctx.fillStyle = allDone ? "#8A8375" : "#2A3441";
             ctx.font = "15px monospace";
             wrapped.forEach((line, i) => {
               ctx.fillText(line, textX, y + i * LINE_HEIGHT);
