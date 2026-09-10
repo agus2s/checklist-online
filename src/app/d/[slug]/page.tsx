@@ -80,6 +80,13 @@ export default function VisitChecklist() {
     };
   }, [slug, applyDoc]);
 
+  useEffect(() => {
+    const timer = setInterval(() => {
+      load();
+    }, 10000);
+    return () => clearInterval(timer);
+  }, [load]);
+
   const cycleSlot = async (id: string, slotIndex: number) => {
     if (!template) return;
     const item = findSlotUnit(template.blocks, id);
@@ -212,8 +219,8 @@ export default function VisitChecklist() {
 
         <p className="page-footnote">
           Bagikan tautan ini — siapa pun yang membukanya bisa mencentang
-          isinya. Tidak ada sinkronisasi otomatis, tekan &quot;Perbarui&quot;
-          untuk melihat centangan terbaru dari orang lain.
+          isinya. Halaman memuat data terbaru otomatis setiap 10 detik;
+          klik &quot;Perbarui&quot; untuk langsung merefresh sekarang.
         </p>
       </div>
     </div>
